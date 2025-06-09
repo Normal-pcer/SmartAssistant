@@ -14,28 +14,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu,
                              QProgressBar, QHBoxLayout, QComboBox, QSpacerItem, QSizePolicy,
                              QDialog, QTableWidget, QTableWidgetItem, QHeaderView)
 from PyQt5.QtCore import Qt, QSize, QTimer, QObject, pyqtSignal, QPropertyAnimation
-from PyQt5.QtGui import QIcon, QFont, QDragEnterEvent, QDropEvent, QTextCursor
+from PyQt5.QtGui import QIcon, QFont, QDragEnterEvent, QDropEvent, QTextCursor, QKeyEvent, QCloseEvent
 from openai import OpenAI
-
-# 创建全局信号类用于跨线程通信
-
-
-class GlobalSignals(QObject):
-    toggle_window_signal = pyqtSignal()
-    show_window_signal = pyqtSignal()
-    hide_window_signal = pyqtSignal()
-
-
-# 根据平台选择全局快捷键库
-if platform.system() == "Windows":
-    import keyboard as kb
-elif platform.system() == "Darwin":  # macOS
-    from pynput import keyboard
-elif platform.system() == "Linux":
-    import dbus
-    import dbus.service
-    import dbus.mainloop.glib
-    from gi.repository import GLib
 
 ICON_PATH = "assistant_icon"  # 图标基础名称
 
@@ -74,6 +54,8 @@ class GlobalSignals(QObject):
 
 
 class SmartAssistant(QMainWindow):
+    """智能助手主窗口"""
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("智能助手")
@@ -92,8 +74,7 @@ class SmartAssistant(QMainWindow):
         try:
             self.setWindowIcon(QIcon(self.get_icon_path("assistant_icon")))
         except:
-            self.setWindowIcon(
-                self.style().standardIcon(QStyle.SP_ComputerIcon))
+            pass
 
         # 窗口置顶状态
         self.is_always_on_top = True
@@ -115,13 +96,15 @@ class SmartAssistant(QMainWindow):
         self.setup_global_hotkey()
 
         # 创建状态栏
-        self.statusBar().showMessage("就绪")
+        if bar := self.statusBar():
+            bar.showMessage("就绪")
 
         # 显示当前模型信息
         self.update_model_status()
 
         # 设置窗口标志
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType(Qt.WindowType.Window |
+                            Qt.WindowType.WindowStaysOnTopHint))
 
     def init_ai_client(self):
         """初始化兼容OpenAI API的客户端（支持DeepSeek等平台）"""
@@ -350,27 +333,29 @@ class SmartAssistant(QMainWindow):
             tray_icon_path = self.get_icon_path(ICON_PATH)
             if tray_icon_path and os.path.exists(tray_icon_path):
                 self.tray_icon.setIcon(QIcon(tray_icon_path))
-            else:
+            elif style := self.style():
                 self.tray_icon.setIcon(
-                    self.style().standardIcon(QStyle.SP_ComputerIcon))
+                    style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
 
             tray_menu = QMenu()
 
             # 显示主窗口
-            show_action = tray_menu.addAction("显示主窗口")
-            show_action.triggered.connect(self.show_normal)
+            if show_action := tray_menu.addAction("显示主窗口"):
+                show_action.triggered.connect(self.show_normal)
 
             # 置顶/取消置顶
-            self.topmost_action = tray_menu.addAction("窗口置顶")
-            self.topmost_action.setCheckable(True)
-            self.topmost_action.setChecked(self.is_always_on_top)
-            self.topmost_action.triggered.connect(self.toggle_always_on_top)
+            if topmost_action := tray_menu.addAction("窗口置顶"):
+                self.topmost_action = topmost_action
+                self.topmost_action.setCheckable(True)
+                self.topmost_action.setChecked(self.is_always_on_top)
+                self.topmost_action.triggered.connect(
+                    self.toggle_always_on_top)
 
             tray_menu.addSeparator()
 
             # 退出
-            quit_action = tray_menu.addAction("退出")
-            quit_action.triggered.connect(self.quit_app)
+            if quit_action := tray_menu.addAction("退出"):
+                quit_action.triggered.connect(self.quit_app)
 
             self.tray_icon.setContextMenu(tray_menu)
             self.tray_icon.show()
@@ -388,7 +373,12 @@ class SmartAssistant(QMainWindow):
     def show_normal(self):
         """正常显示窗口并确保置顶"""
         # 确保窗口显示在屏幕中央
-        screen = QApplication.primaryScreen().geometry()
+        if p_screen := QApplication.primaryScreen():
+            screen = p_screen.geometry()
+        else:
+            QMessageBox.warning(
+                self, "显示错误", "无法获取主屏幕信息，窗口将无法正确显示")
+            return
         window_size = self.size()
         self.move(
             int((screen.width() - window_size.width()) / 2),
@@ -404,21 +394,24 @@ class SmartAssistant(QMainWindow):
         self.animation.setDuration(200)  # 200毫秒
         self.animation.setStartValue(0.0)
         self.animation.setEndValue(1.0)
-        self.animation.start(QPropertyAnimation.DeleteWhenStopped)
+        self.animation.start(
+            QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
         # 激活窗口
         self.activateWindow()
         self.raise_()
 
         # 确保窗口在最前面
-        self.setWindowState(self.windowState() & ~
-                            Qt.WindowMinimized | Qt.WindowActive)
+        self.setWindowState(Qt.WindowState(self.windowState() & ~
+                            Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive))
 
         # 更新窗口置顶标志
         if self.is_always_on_top:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(self.windowFlags() |
+                                Qt.WindowType.WindowStaysOnTopHint)
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(Qt.WindowType(self.windowFlags() & ~
+                                Qt.WindowType.WindowStaysOnTopHint))
 
         # 重新显示窗口以应用标志
         self.show()
@@ -439,6 +432,8 @@ class SmartAssistant(QMainWindow):
 
         if platform.system() == "Windows":
             try:
+                import keyboard as kb
+
                 # Windows平台
                 kb.add_hotkey(
                     hotkey, lambda: self.signals.toggle_window_signal.emit())
@@ -453,6 +448,8 @@ class SmartAssistant(QMainWindow):
         elif platform.system() == "Darwin":
             # macOS平台
             try:
+                from pynput import keyboard
+
                 def on_activate():
                     self.signals.toggle_window_signal.emit()
 
@@ -470,6 +467,11 @@ class SmartAssistant(QMainWindow):
 
         elif platform.system() == "Linux":
             # Linux平台 (DBus实现)
+            import dbus  # type: ignore
+            import dbus.service  # type: ignore
+            import dbus.mainloop.glib  # type: ignore
+            from gi.repository import GLib  # type: ignore
+
             try:
                 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
                 bus = dbus.SessionBus()
@@ -499,11 +501,15 @@ class SmartAssistant(QMainWindow):
 
         # 更新窗口标志
         if self.is_always_on_top:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-            self.statusBar().showMessage("窗口已置顶", 2000)
+            self.setWindowFlags(self.windowFlags() |
+                                Qt.WindowType.WindowStaysOnTopHint)
+            if bar := self.statusBar():
+                bar.showMessage("窗口已置顶", 2000)
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-            self.statusBar().showMessage("取消窗口置顶", 2000)
+            self.setWindowFlags(Qt.WindowType(self.windowFlags() & ~
+                                Qt.WindowType.WindowStaysOnTopHint))
+            if bar := self.statusBar():
+                bar.showMessage("窗口已取消置顶", 2000)
 
         # 重新显示窗口以应用标志
         self.show()
@@ -522,21 +528,25 @@ class SmartAssistant(QMainWindow):
             target=self.register_hotkey, daemon=True)
         hotkey_thread.start()
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0: QKeyEvent | None):
         """处理键盘事件"""
-        # 按ESC键隐藏窗口
-        if event.key() == Qt.Key_Escape:
+        event = a0
+        if event is None:
+            return
+
+        # 按 ESC 键隐藏窗口
+        if event.key() == Qt.Key.Key_Escape:
             self.hide()
 
-        # 按Ctrl+T切换置顶状态
-        elif event.key() == Qt.Key_T and event.modifiers() == Qt.ControlModifier:
+        # 按 Ctrl+T 切换置顶状态
+        elif event.key() == Qt.Key.Key_T and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.toggle_always_on_top()
 
         super().keyPressEvent(event)
 
     def tray_icon_activated(self, reason):
         """托盘图标点击事件处理"""
-        if reason == QSystemTrayIcon.Trigger:  # 左键点击
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # 左键点击
             self.toggle_window()
 
     def init_ui(self):
@@ -547,7 +557,7 @@ class SmartAssistant(QMainWindow):
 
         # 文件拖放区
         self.file_drop_area = QLabel("拖拽文件到这里")
-        self.file_drop_area.setAlignment(Qt.AlignCenter)
+        self.file_drop_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.file_drop_area.setStyleSheet(
             "border: 2px dashed #aaa; border-radius: 10px; padding: 20px;"
             "background-color: #f9f9f9; font-size: 16px;"
@@ -676,8 +686,9 @@ class SmartAssistant(QMainWindow):
         self.apply_styles()
 
         # 添加置顶按钮到工具栏
-        self.toolbar = self.addToolBar("工具栏")
-        self.toolbar.setMovable(False)
+        if bar := self.addToolBar("工具栏"):
+            self.toolbar = bar
+            self.toolbar.setMovable(False)
 
         # 置顶按钮
         self.pin_button = QPushButton()
@@ -722,7 +733,7 @@ class SmartAssistant(QMainWindow):
         self.model_combo.currentIndexChanged.connect(
             self.model_selection_changed)
 
-    def model_selection_changed(self, index):
+    def model_selection_changed(self, index: int):
         """当用户选择不同模型时更新配置"""
         if index >= 0:
             # 更新配置中的当前模型索引
@@ -735,8 +746,9 @@ class SmartAssistant(QMainWindow):
             model_name = current_model["name"]
             supports_fc = "支持" if current_model.get(
                 "supports_functions", False) else "不支持"
-            self.statusBar().showMessage(
-                f"当前模型: {model_name} | Function Calling: {supports_fc}")
+            if bar := self.statusBar():
+                bar.showMessage(
+                    f"当前模型: {model_name} | Function Calling: {supports_fc}")
 
     def open_config_dialog(self):
         """打开模型配置对话框"""
@@ -751,17 +763,15 @@ class SmartAssistant(QMainWindow):
         self.model_table.setColumnCount(6)
         self.model_table.setHorizontalHeaderLabels(
             ["名称", "模型ID", "API地址", "API密钥", "支持Function Calling", "操作"])
-        self.model_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.model_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch)  # 名称列自适应
-        self.model_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeToContents)  # 模型ID固定宽度
-        self.model_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.Stretch)  # API地址自适应
-        self.model_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.Stretch)  # API密钥自适应
-        self.model_table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeToContents)  # 功能支持固定宽度
+        if header := self.model_table.horizontalHeader():
+            header.setSectionResizeMode(QHeaderView.Interactive)
+            header.setSectionResizeMode(0, QHeaderView.Stretch)  # 名称列自适应
+            header.setSectionResizeMode(
+                1, QHeaderView.ResizeToContents)  # 模型ID固定宽度
+            header.setSectionResizeMode(2, QHeaderView.Stretch)  # API地址自适应
+            header.setSectionResizeMode(3, QHeaderView.Stretch)  # API密钥自适应
+            header.setSectionResizeMode(
+                4, QHeaderView.ResizeToContents)  # 功能支持固定宽度
 
         # 加载模型数据到表格
         self.populate_model_table()
@@ -834,8 +844,10 @@ class SmartAssistant(QMainWindow):
             # 支持Function Calling
             supports_fc = model.get("supports_functions", False)
             fc_item = QTableWidgetItem()
-            fc_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            fc_item.setCheckState(Qt.Checked if supports_fc else Qt.Unchecked)
+            fc_item.setFlags(Qt.ItemFlag(Qt.ItemFlag.ItemIsUserCheckable |
+                             Qt.ItemFlag.ItemIsEnabled))
+            fc_item.setCheckState(
+                Qt.CheckState.Checked if supports_fc else Qt.CheckState.Unchecked)
             self.model_table.setItem(row, 4, fc_item)
 
             # 删除按钮
@@ -867,8 +879,9 @@ class SmartAssistant(QMainWindow):
 
         # Function Calling复选框
         fc_item = QTableWidgetItem()
-        fc_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-        fc_item.setCheckState(Qt.Unchecked)
+        fc_item.setFlags(Qt.ItemFlag(Qt.ItemFlag.ItemIsUserCheckable |
+                         Qt.ItemFlag.ItemIsEnabled))
+        fc_item.setCheckState(Qt.CheckState.Unchecked)
         self.model_table.setItem(row_count, 4, fc_item)
 
         # 删除按钮
@@ -891,12 +904,20 @@ class SmartAssistant(QMainWindow):
             api_key_widget = self.model_table.cellWidget(row, 3)
             api_key = api_key_widget.text() if api_key_widget else ""
 
+            def get_text(item: QTableWidgetItem | None) -> str:
+                return item.text() if item else ""
+
+            if item := self.model_table.item(row, 4):
+                supports_fc = item.checkState() == Qt.CheckState.Checked
+            else:
+                supports_fc = False
+
             model = {
-                "name": self.model_table.item(row, 0).text(),
-                "model_id": self.model_table.item(row, 1).text(),
-                "api_base": self.model_table.item(row, 2).text(),
+                "name": get_text(self.model_table.item(row, 0)),
+                "model_id": get_text(self.model_table.item(row, 1)),
+                "api_base": get_text(self.model_table.item(row, 2)),
                 "api_key": api_key,
-                "supports_functions": self.model_table.item(row, 4).checkState() == Qt.Checked
+                "supports_functions": supports_fc
             }
 
             # 验证必要字段
@@ -928,6 +949,9 @@ class SmartAssistant(QMainWindow):
 
     def update_model_status(self):
         """更新状态栏中的模型信息"""
+        bar = self.statusBar()
+        if bar is None:
+            return
         config = self.load_config()
         current_index = config.get("current_model_index", 0)
         models = config.get("models", [])
@@ -937,16 +961,29 @@ class SmartAssistant(QMainWindow):
             model_name = current_model["name"]
             supports_fc = "FC" if current_model.get(
                 "supports_functions", False) else "no-FC"
-            self.statusBar().showMessage(f"模型: {model_name} ({supports_fc})")
+            bar.showMessage(f"模型: {model_name} ({supports_fc})")
         else:
-            self.statusBar().showMessage("未选择模型")
+            bar.showMessage("未选择模型")
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
+    def dragEnterEvent(self, a0: QDragEnterEvent | None):
+        """处理拖拽进入事件"""
+        if a0 is None:
+            return
+        event = a0
+        if (data := event.mimeData()) and (data.hasUrls()):
             event.acceptProposedAction()
 
-    def dropEvent(self, event: QDropEvent):
-        for url in event.mimeData().urls():
+    def dropEvent(self, a0: QDropEvent | None):
+        """处理拖拽放下事件"""
+        if a0 is None:
+            return
+        event = a0
+
+        data = event.mimeData()
+        if data is None:
+            return
+
+        for url in data.urls():
             file_path = url.toLocalFile()
             if os.path.isfile(file_path):
                 self.add_file(file_path)
@@ -983,7 +1020,8 @@ class SmartAssistant(QMainWindow):
         # 获取文件列表
         files = []
         for index in range(self.file_info.count()):
-            files.append(self.file_info.item(index).text())
+            if item := self.file_info.item(index):
+                files.append(item.text())
 
         # 获取当前配置
         config = self.load_config()
@@ -992,10 +1030,11 @@ class SmartAssistant(QMainWindow):
 
         if current_index < len(models):
             current_model = models[current_index]
-            model_id = current_model["model_id"]
-            api_base = current_model["api_base"]
-            api_key = current_model["api_key"]
-            supports_functions = current_model.get("supports_functions", False)
+            model_id = str(current_model["model_id"])
+            api_base = str(current_model["api_base"])
+            api_key = str(current_model["api_key"])
+            supports_functions = bool(
+                current_model.get("supports_functions", False))
 
             # 设置客户端
             self.client.api_key = api_key
@@ -1015,6 +1054,9 @@ class SmartAssistant(QMainWindow):
         # 构建AI提示
         prompt = self.build_prompt(command, files, supports_functions)
         print("execute_command: prompt =", prompt)
+        layout = self.layout()
+        if layout is None:
+            raise RuntimeError("Layout is not initialized")
         # 调用AI
         try:
             self.output_area.append("正在思考解决方案...")
@@ -1022,7 +1064,8 @@ class SmartAssistant(QMainWindow):
 
             # 清空之前的确认按钮
             if hasattr(self, 'confirm_execute_button'):
-                self.layout().removeWidget(self.confirm_execute_button)
+                if layout := self.layout():
+                    layout.removeWidget(self.confirm_execute_button)
                 self.confirm_execute_button.deleteLater()
                 del self.confirm_execute_button
 
@@ -1092,10 +1135,12 @@ class SmartAssistant(QMainWindow):
                 self.output_area.append("\n使用Function Calling模式...")
                 QApplication.processEvents()
 
+                from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
+
                 stream = self.client.chat.completions.create(
-                    model=current_model,
+                    model=model_id,
                     messages=[{"role": "user", "content": prompt}],
-                    tools=tools,
+                    tools=[ChatCompletionToolParam(**tool) for tool in tools],
                     tool_choice="auto",
                     stream=True,
                     temperature=0.2,
@@ -1131,11 +1176,11 @@ class SmartAssistant(QMainWindow):
                                         "id": tool_call.id,
                                         "type": tool_call.type,
                                         "function": {
-                                            "name": tool_call.function.name,
-                                            "arguments": tool_call.function.arguments
+                                            "name": tool_call.function.name if tool_call.function else "",
+                                            "arguments": tool_call.function.arguments if tool_call.function else ""
                                         }
                                     })
-                                else:
+                                elif tool_call.function:
                                     # 追加参数
                                     tool_calls[idx]["function"]["arguments"] += tool_call.function.arguments
 
@@ -1168,7 +1213,9 @@ class SmartAssistant(QMainWindow):
                                 )
                                 self.confirm_execute_button.clicked.connect(
                                     lambda: self.execute_script(script, files))
-                                self.layout().addWidget(self.confirm_execute_button)
+                                if layout is not None:
+                                    layout.addWidget(
+                                        self.confirm_execute_button)
 
                                 # 在创建生成文件按钮的地方
                                 self.confirm_generate_button = QPushButton(
@@ -1179,8 +1226,11 @@ class SmartAssistant(QMainWindow):
                                     "background-color: #FF9800; color: white;"
                                 )
                                 self.confirm_generate_button.clicked.connect(
-                                    lambda p=file_path, c=content: self.generate_file(p, c))
-                                self.layout().addWidget(self.confirm_generate_button)
+                                    lambda: self.generate_file(file_path, content))
+
+                                if layout is not None:
+                                    layout.addWidget(
+                                        self.confirm_generate_button)
 
                             elif function_name == "output_direct_result":
                                 result = args_dict["result"]
@@ -1195,14 +1245,15 @@ class SmartAssistant(QMainWindow):
                                 self.confirm_generate_button = QPushButton(
                                     f"生成文件: {file_path}")
                                 self.confirm_generate_button.clicked.connect(
-                                    lambda p=file_path, c=content: self.generate_file(p, c))
-                                self.layout().addWidget(self.confirm_generate_button)
+                                    lambda: self.generate_file(file_path, content))
+                                if layout is not None:
+                                    layout.addWidget(
+                                        self.confirm_generate_button)
 
                                 self.output_area.append(
                                     f"\n准备生成文件: {file_path}")
                                 self.output_area.append(
                                     f"内容预览:\n{content[:500]}{'...' if len(content) > 500 else ''}")
-
                         except json.JSONDecodeError:
                             self.output_area.append("\n参数解析失败")
                         except KeyError as e:
@@ -1211,8 +1262,8 @@ class SmartAssistant(QMainWindow):
                     self.output_area.append("\n未检测到工具调用")
 
             else:
-                # 不支持Function Calling的模型 - 回退到Python脚本生成
-                self.output_area.append("\n使用Python脚本生成模式...")
+                # 不支持 Function Calling 的模型 - 回退到普通模式
+                self.output_area.append("\n使用普通模式...")
                 QApplication.processEvents()
 
                 # 流式调用AI
@@ -1250,7 +1301,9 @@ class SmartAssistant(QMainWindow):
                     )
                     self.confirm_execute_button.clicked.connect(
                         lambda: self.execute_script(script, files))
-                    self.layout().addWidget(self.confirm_execute_button)
+
+                    if layout is not None:
+                        layout.addWidget(self.confirm_execute_button)
 
                     # 在创建生成文件按钮的地方
                     if file_path is not None:
@@ -1262,8 +1315,9 @@ class SmartAssistant(QMainWindow):
                             "background-color: #FF9800; color: white;"
                         )
                         self.confirm_generate_button.clicked.connect(
-                            lambda p=file_path, c=content: self.generate_file(p, c))
-                        self.layout().addWidget(self.confirm_generate_button)
+                            lambda: self.generate_file(file_path, full_response))
+                        if layout := self.layout():
+                            layout.addWidget(self.confirm_generate_button)
                 else:
                     self.output_area.append("\n未检测到可执行脚本")
 
@@ -1278,7 +1332,8 @@ class SmartAssistant(QMainWindow):
         finally:
             # 移除进度条
             if hasattr(self, 'progress_bar'):
-                self.layout().removeWidget(self.progress_bar)
+                if layout := self.layout():
+                    layout.removeWidget(self.progress_bar)
                 self.progress_bar.deleteLater()
                 del self.progress_bar
 
@@ -1303,7 +1358,8 @@ class SmartAssistant(QMainWindow):
 
                 # 移除确认按钮
                 if hasattr(self, 'confirm_generate_button'):
-                    self.layout().removeWidget(self.confirm_generate_button)
+                    if layout := self.layout():
+                        layout.removeWidget(self.confirm_generate_button)
                     self.confirm_generate_button.deleteLater()
                     del self.confirm_generate_button
         except Exception as e:
@@ -1321,7 +1377,8 @@ class SmartAssistant(QMainWindow):
                 print("execute_script: script =", script)
                 # 移除确认按钮
                 if hasattr(self, 'confirm_execute_button'):
-                    self.layout().removeWidget(self.confirm_execute_button)
+                    if layout := self.layout():
+                        layout.removeWidget(self.confirm_execute_button)
                     self.confirm_execute_button.deleteLater()
                     del self.confirm_execute_button
 
@@ -1456,22 +1513,25 @@ Python 脚本遵循以下规则：
         self.save_history()
         QApplication.quit()
 
-    def closeEvent(self, event):
-        event.ignore()
+    def closeEvent(self, a0: QCloseEvent | None):
+        if a0 is None:
+            return
+        a0.ignore()
         self.hide()
 
 
 # Linux DBus服务实现
-if platform.system() == "Linux":
-    class HotkeyService(dbus.service.Object):
-        def __init__(self, bus, object_path, callback):
-            dbus.service.Object.__init__(self, bus, object_path)
-            self.callback = callback
+if platform.system() == "Linux":  # type: ignore
+    class HotkeyService(dbus.service.Object):  # type: ignore
+        def __init__(self, bus, object_path, callback):  # type: ignore
+            dbus.service.Object.__init__( # type: ignore
+                self, bus, object_path)  # type: ignore
+            self.callback = callback  # type: ignore
 
-        @dbus.service.method('com.example.Hotkeys',
-                             in_signature='', out_signature='')
-        def Activate(self):
-            self.callback()
+        @dbus.service.method('com.example.Hotkeys',  # type: ignore
+                             in_signature='', out_signature='')  # type: ignore
+        def Activate(self):  # type: ignore
+            self.callback()  # type: ignore
 
 
 if __name__ == "__main__":
