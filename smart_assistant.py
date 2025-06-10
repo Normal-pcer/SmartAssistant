@@ -10,10 +10,10 @@ import platform
 import threading
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu,
                              QStyle, QVBoxLayout, QWidget, QLineEdit, QPushButton,
-                             QLabel, QTextEdit, QListWidget, QFileDialog, QMessageBox,
-                             QProgressBar, QHBoxLayout, QComboBox, QSpacerItem, QSizePolicy,
+                             QLabel, QTextEdit, QListWidget, QMessageBox,
+                             QHBoxLayout, QComboBox, QSpacerItem, QSizePolicy,
                              QDialog, QTableWidget, QTableWidgetItem, QHeaderView)
-from PyQt5.QtCore import Qt, QSize, QTimer, QObject, pyqtSignal, QPropertyAnimation
+from PyQt5.QtCore import Qt, QObject, pyqtSignal, QPropertyAnimation
 from PyQt5.QtGui import QIcon, QFont, QDragEnterEvent, QDropEvent, QTextCursor, QKeyEvent, QCloseEvent
 from openai import OpenAI
 
