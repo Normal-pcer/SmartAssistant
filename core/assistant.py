@@ -7,7 +7,7 @@ from typing import List, Callable
 import os
 from core.config import Config
 from core.ai_client import AIClient, AITool, ChatContent
-from utils.general import log
+from utils.general import log, Path
 from core.tools_description import EXECUTE_PYTHON_SCRIPT
 from utils.file import is_text
 from core.execute import execute_python_script
@@ -17,6 +17,7 @@ PREVIEW_FILE_LIMIT = 1024 * 3  # 预览 3KB 以内的文件
 
 class Assistant:
     config: Config  # 配置文件
+    selected_files: List[Path] = [] # 选中的文件
 
     def __init__(self) -> None:
         self.config = Config()

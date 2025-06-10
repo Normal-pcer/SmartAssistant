@@ -5,7 +5,7 @@ import os
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
 from core.assistant import Assistant
-from ui.main_window import MainWindow
+from ui.main_window import MainWindow, ICON_NAME
 from sys import argv, exit
 from utils.windows import set_app_id
 from utils.general import log
@@ -14,7 +14,7 @@ from utils.icon import create_default_icon, get_icon
 APP_NAME = "智能助手"
 APP_TITLE = "智能助手"
 APP_ID = "Normalpcer.SmartAssistant"
-ICON_NAME = "assistant_icon"
+
 
 def main():
     # 创建应用实例
@@ -29,7 +29,7 @@ def main():
         set_app_id(APP_ID)
     except Exception as e:
         log.error(f"无法设置 Windows 应用 ID：{e}")
-    
+
     # 创建主窗口
     window = MainWindow(Assistant())
 
@@ -38,8 +38,14 @@ def main():
         window.setWindowIcon(QIcon(icon_path))
     else:
         window.setWindowIcon(QIcon(create_default_icon()))
-    
+
     window.setWindowTitle(APP_TITLE)
+
+    window.show()
 
     # 开始运行
     exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()
