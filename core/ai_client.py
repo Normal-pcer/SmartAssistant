@@ -69,13 +69,14 @@ class AIClient:
     client: openai.OpenAI
     tools: Dict[str, AITool]  # 名称到工具的映射
 
+    active_stream = None
+
     def __init__(self, model: AIModel, tools: Optional[List[AITool]] = None) -> None:
         tools = tools or []
         self.model = model
         self.client = openai.OpenAI(
             api_key=model.api_key, base_url=model.api_base)
         self.tools = {tool.name: tool for tool in tools}
-
     
 
     def chat_stream(self, messages: List[ChatCompletionMessageParam],
@@ -91,6 +92,7 @@ class AIClient:
             stream=True,
             temperature=temperature,
         )
+        self.active_stream = stream
 
         full_response = ""
 
@@ -146,3 +148,7 @@ class AIClient:
                 raise ValueError(f"Unknown tool: {tool_call.name}")
             tool = self.tools[tool_call.name]
             tool.call(tool_call.args)
+
+    def close_active(self) -> None:
+        if self.active_stream  is not None:
+            self.active_stream.close()

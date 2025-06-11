@@ -2,11 +2,12 @@
 处理主要逻辑
 """
 import json
-from abc import ABC, abstractmethod
-from typing import List, Callable
 import os
+import re
+from typing import List, Callable
+from PyQt5.QtCore import QObject, pyqtSignal
 from core.config import Config
-from core.ai_client import AIClient, AITool, ChatContent
+from core.ai_client import AIClient, AITool, AIModel, ChatContent
 from utils.general import log, Path
 from core.tools_description import EXECUTE_PYTHON_SCRIPT
 from utils.file import is_text
@@ -16,13 +17,22 @@ PREVIEW_FILE_LIMIT = 1024 * 3  # 预览 3KB 以内的文件
 
 
 class Assistant:
+    class CommandSignals(QObject):
+        """执行用户文字命令的相关信号"""
+        receive_content = pyqtSignal(ChatContent)
+        confirm_script = pyqtSignal(str)
+
+        running_lock: bool = False
+
     config: Config  # 配置文件
-    selected_files: List[Path] = [] # 选中的文件
+    selected_files: List[Path] = []  # 选中的文件
+
+    command_signals = CommandSignals()
 
     def __init__(self) -> None:
         self.config = Config()
 
-    def process_files(self, script: str, files: List[str], 
+    def process_files(self, script: str, files: List[str],
                       output: Callable[[str], None]) -> None:
         """
         执行 Python 脚本来处理文件。
@@ -32,31 +42,11 @@ class Assistant:
             output(f"正在处理文件 {file}...\n")
             result = execute_python_script(script, file)
             output(f"程序输出：{result.stdout}\n")
-            output(f"程序错误：{result.stderr}\n")
+            if stderr := result.stderr.strip():  # 如果 stderr 存在信息
+                output(f"程序错误：{stderr}\n")
 
-    class CommandContext(ABC):
-        """
-        执行用户命令的上下文。
-        支持以下操作：
-        - 在收到 AI 的响应时，刷新文字。
-        - 在 AI 生成代码之后，确认并执行。
-        """
-
-        @abstractmethod
-        def add_content(self, content: ChatContent) -> None:
-            """添加新的回复内容"""
-            pass
-
-        @abstractmethod
-        def confirm_script(self, script: str) -> None:
-            """要求用户确认代码"""
-            pass
-
-    def execute_command(self, message: str, context: CommandContext) -> None:
-        """
-        执行用户的文字命令
-        传入上下文进行相关响应
-        """
+    def execute_command(self, message: str) -> None:
+        """执行用户的文字命令"""
         log.debug(f"执行用户命令: {message}")
 
         if 0 <= self.config.current_model_index < len(self.config.models):
@@ -79,17 +69,33 @@ class Assistant:
                 if not isinstance(script, str):
                     log.error("execute_python_script: 脚本生成异常；script 参数必须是字符串")
                     return
-                context.confirm_script(script)
+                self.command_signals.confirm_script.emit(script)
             tools.append(AITool("execute_python_script",
-                         EXECUTE_PYTHON_SCRIPT, action,))
+                                EXECUTE_PYTHON_SCRIPT, action,))
 
         client = AIClient(model, tools)
+
+        full_content = ""
+        self.command_signals.running_lock = True
         for response in client.chat_stream([
             {"role": "user", "content": message},
         ], temperature=0.2):
-            context.add_content(response)  # 在客户端刷新文字
+            if not self.command_signals.running_lock:
+                client.close_active()
+                break  # 中断
+            self.command_signals.receive_content.emit(response)  # 在客户端刷新文字
+            if response.type == ChatContent.Type.CONTENT:
+                full_content += response.text
+        
+        if not model.supports_functions:
+            # 手动解析 Python 脚本
+            code_match = re.search(
+                r"```python\n(.*?)\n```", full_content, re.DOTALL)
+            if code_match:  # 检测到 Python 代码块
+                script = code_match.group(1)
+                self.command_signals.confirm_script.emit(script)
 
-    def build_prompt(self, command: str, files: List[str], supports_fc: bool) -> str:
+    def build_prompt(self, command: str, files: List[Path], supports_fc: bool) -> str:
         """通过给定的命令和文件列表，构建 AI 提示词"""
 
         prompt = """
@@ -97,11 +103,12 @@ class Assistant:
         if supports_fc:
             prompt += """
 如果你选择生成 Python 脚本，请通过指定的 Function Calling 工具来提交。你只能生成一个脚本，并且不能由此获得更多信息。
-你可以在输出的正文中包含代码，然后在函数调用中原封不动地提交它。"""
+你需要在输出的正文中包含代码，然后在函数调用中原封不动地提交它，以确保用户可以及时看到你的工作状态。
+你可以在正文中包含其他的描述性内容以帮助你输出，这些内容仅会展示给用户。"""
         else:
             prompt += """
 如果你选择生成 Python 脚本，请保证你的输出中仅包含一个 Python 代码块（使用 Markdown 语法 ```python [代码]``` 包裹），接下来用户将会执行这个代码。
-代码块以外可以包括其他描述性的内容以帮助你输出，这些内容将会被忽略。"""
+代码块以外可以包括其他描述性的内容以帮助你输出，这些内容仅会展示给用户。"""
 
         prompt += """
 Python 脚本需要遵循以下规则：
@@ -130,3 +137,6 @@ Python 脚本需要遵循以下规则：
                         log.warning(f"无法预览文件 {file}。原因：{e}")
 
         return prompt
+
+    def get_models(self) -> List[AIModel]:
+        return self.config.models
