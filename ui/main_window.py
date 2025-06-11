@@ -128,7 +128,7 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.command_input)
 
         # 模型选择区
-        self.model_selector = ModelSelector()
+        self.model_selector = ModelSelector(self, self.assistant)
         self.main_layout.addLayout(self.model_selector)
         self.model_selector.update_model_list(
             [x.name for x in self.assistant.get_models()])
