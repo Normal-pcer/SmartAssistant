@@ -139,7 +139,11 @@ class MainWindow(QMainWindow):
         def on_add_file(file_path: Path):  # 添加文件时进行相关处理
             log.debug(f"on_add_file: {file_path}")
             self.assistant.selected_files.append(file_path)
+        def on_remove_file(file_path: Path):  # 删除文件
+            log.debug(f"on_remove_file: {file_path}")
+            self.assistant.selected_files.remove(file_path)
         self.file_drop_area.add_file_signal.connect(on_add_file)
+        self.file_drop_area.remove_file_signal.connect(on_remove_file)
 
         # 命令输入区
         self.main_layout.addWidget(QLabel("指令："))
@@ -182,6 +186,7 @@ class MainWindow(QMainWindow):
     def execute_command(self) -> None:
         """开始执行用户命令"""
         log.debug(f"execute_command")
+        self.output_area.append_text("开始执行用户命令。\n")
         command = self.command_input.toPlainText()
         models = self.assistant.get_models()
         current_model = models[self.model_selector.get_selected_index()]
