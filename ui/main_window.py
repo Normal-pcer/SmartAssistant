@@ -3,9 +3,9 @@ UI 主窗口
 """
 
 from typing import Optional
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QTextEdit, QLabel
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QTextEdit, QLabel, QPushButton
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from core.ai_client import ChatContent
 from core.assistant import Assistant
 from utils.general import set_default, Path, log
@@ -75,11 +75,12 @@ class MainWindow(QMainWindow):
     程序的主窗口
     """
     assistant: Assistant  # 所有实际逻辑的处理器
-    always_on_top_flag: bool = True  # 当前是否置顶
+    pin_flag: bool = True  # 当前是否置顶
 
     main_layout: QVBoxLayout
     main_widget: QWidget
 
+    pin_button: QPushButton
     file_drop_area: FileDropArea
     file_info: FileInfo
     model_selector: ModelSelector
@@ -107,6 +108,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
         # 添加初始组件
+        # 工具栏
+        self.tool_bar = self.addToolBar("工具栏")
+        self.tool_bar.setMovable(False)
+
+        # 置顶按钮
+        self.pin_flag = True
+        self.pin_button = QPushButton("置顶")
+        self.pin_button.setCheckable(True)
+        self.pin_button.setChecked(self.pin_flag)
+        self.pin_button.clicked.connect(self.toggle_pin)
+        self.tool_bar.addWidget(self.pin_button)
+        self.after_pin()
+
         # 文件拖放区
         self.file_drop_area = FileDropArea()
         self.main_layout.addWidget(self.file_drop_area)
@@ -147,7 +161,7 @@ class MainWindow(QMainWindow):
         self.output_area = OutputArea()
         self.main_layout.addWidget(self.output_area)
 
-    def execute_command(self):
+    def execute_command(self) -> None:
         """开始执行用户命令"""
         log.debug(f"execute_command")
         command = self.command_input.toPlainText()
@@ -177,7 +191,7 @@ class MainWindow(QMainWindow):
 
         self.ai_task_thread.start()
 
-    def stop_command(self):
+    def stop_command(self) -> None:
         """中断用户命令"""
         if self.ai_task_thread is not None:
             self.ai_task_thread.cancel()
@@ -187,6 +201,25 @@ class MainWindow(QMainWindow):
         self.assistant.process_files(
             script, self.assistant.selected_files, self.output_area.append_text)
 
-    def deny_script(self):
+    def deny_script(self) -> None:
         """拒绝脚本"""
         self.output_area.append_text("未运行脚本")
+
+    def toggle_pin(self) -> None:
+        """切换置顶状态"""
+        text = ("置顶", "取消置顶")
+        self.pin_flag = not self.pin_flag
+        self.pin_button.setText(text[self.pin_flag])
+        self.pin_button.setChecked(self.pin_flag)
+        self.after_pin()
+
+    def after_pin(self) -> None:
+        """置顶或取消置顶后，重新设置窗口状态"""
+        if self.pin_flag:
+            self.setWindowFlags(self.windowFlags() |
+                                Qt.WindowType.WindowStaysOnTopHint)
+            self.statusBar().showMessage("窗口已置顶", 2000)
+        else:
+            self.setWindowFlags(self.windowFlags() & ~
+                                Qt.WindowType.WindowStaysOnTopHint)
+            self.statusBar().showMessage("窗口已取消置顶", 2000)
