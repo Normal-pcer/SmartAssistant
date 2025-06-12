@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List
 from core.ai_client import AIModel
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.smart_assistant/config.json")
@@ -13,11 +13,12 @@ class InvalidConfigError(Exception):
 class Config:
     """存储配置文件中的信息"""
 
-    models = list[AIModel]()
-    current_model_index = 0
+    models: List[AIModel]
+    current_model_index: int = 0
 
     def __init__(self, config_path: str = DEFAULT_CONFIG_PATH) -> None:
         self.config_path = config_path
+        self.models = []
         self.load()
     
     def __del__(self) -> None:

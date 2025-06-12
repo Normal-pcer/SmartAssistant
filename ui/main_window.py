@@ -1,11 +1,11 @@
 """
 UI 主窗口
 """
-
+import threading
 from typing import Optional
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QTextEdit, QLabel, QPushButton
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QIcon, QCloseEvent
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QObject
 from core.ai_client import ChatContent
 from core.assistant import Assistant
 from utils.general import set_default, Path, log
@@ -14,8 +14,8 @@ from ui.widgets.file_drop_area import FileDropArea
 from ui.widgets.output_area import OutputArea
 from ui.widgets.model_selector import ModelSelector
 from ui.widgets.control_buttons import ControlButtons
-# from ui.font import DefaultFont
 from ui.stylesheet import STYLESHEET
+from utils.keyboard import Hotkey
 
 WINDOW_TITLE = "智能助手"
 MIN_WINDOW_SIZE = (600, 500)
@@ -29,10 +29,16 @@ class AITaskThread(QThread):
     receive_text_signal = pyqtSignal(str)
     confirm_script_signal = pyqtSignal(str)
 
-    is_thinking: bool = False
+    is_thinking: bool
 
     assistant: Assistant
     prompt: str
+
+    def __init__(self, assistant: Assistant, prompt: str) -> None:
+        super().__init__()
+        self.assistant = assistant
+        self.prompt = prompt
+        self.is_thinking = False
 
     def add_content(self, content: ChatContent) -> None:
         log.debug(f"on_run_clicked::Context::add_content: {content.text}")
@@ -52,11 +58,6 @@ class AITaskThread(QThread):
     def confirm_script(self, script: str) -> None:
         log.info(f"正在执行脚本: {script}")
         self.confirm_script_signal.emit(script)
-
-    def __init__(self, assistant: Assistant, prompt: str) -> None:
-        super().__init__()
-        self.assistant = assistant
-        self.prompt = prompt
 
     def run(self) -> None:
         self.assistant.command_signals.confirm_script.connect(
@@ -88,6 +89,11 @@ class MainWindow(QMainWindow):
     output_area: OutputArea
 
     ai_task_thread: Optional[AITaskThread] = None  # 等待 AI 回应的线程
+    hotkey: Hotkey
+
+    class Signals(QObject):
+        toggle_pin_signal = pyqtSignal()
+    signals: Signals
 
     def __init__(self, assis: Optional[Assistant] = None) -> None:
         """
@@ -95,6 +101,7 @@ class MainWindow(QMainWindow):
         """
         assis = set_default(assis, Assistant())
         self.assistant = assis
+        self.signals = MainWindow.Signals()
 
         # 初始化窗体
         super().__init__()
@@ -160,6 +167,18 @@ class MainWindow(QMainWindow):
         self.output_area = OutputArea()
         self.main_layout.addWidget(self.output_area)
 
+        # 设置快捷键
+        self.hotkey = Hotkey("<ctrl>+<alt>+<space>")
+        self.hotkey.signal.connect(self.toggle_window)
+        thread = threading.Thread(target=self.hotkey.listen, daemon=True)
+        thread.start()
+
+    def toggle_window(self) -> None:
+        if self.isVisible():
+            self.hide()
+        else:
+            self.show()
+
     def execute_command(self) -> None:
         """开始执行用户命令"""
         log.debug(f"execute_command")
@@ -199,10 +218,12 @@ class MainWindow(QMainWindow):
         """确认脚本"""
         self.assistant.process_files(
             script, self.assistant.selected_files, self.output_area.append_text)
+        self.control_buttons.to_normal_mode()
 
     def deny_script(self) -> None:
         """拒绝脚本"""
         self.output_area.append_text("未运行脚本")
+        self.control_buttons.to_normal_mode()
 
     def toggle_pin(self) -> None:
         """切换置顶状态"""
@@ -212,6 +233,7 @@ class MainWindow(QMainWindow):
         self.pin_button.setChecked(self.pin_flag)
         self.after_pin()
         self.show()
+        self.signals.toggle_pin_signal.emit()
 
     def after_pin(self) -> None:
         """置顶或取消置顶后，重新设置窗口状态"""
@@ -223,3 +245,11 @@ class MainWindow(QMainWindow):
             self.setWindowFlags(self.windowFlags() & ~
                                 Qt.WindowType.WindowStaysOnTopHint)
             self.statusBar().showMessage("窗口已取消置顶", 2000)
+
+    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
+        """重写关闭事件，在后台持续运行"""
+        if a0 is None:
+            return
+        event = a0
+        event.ignore()
+        self.hide()

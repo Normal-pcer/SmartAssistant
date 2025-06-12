@@ -7,7 +7,6 @@ from utils.general import Path
 
 POSSIBLE_ICON_EXT = ["png", "ico", "svg", "jpg"]
 
-
 def create_default_icon() -> Path:
     """不依赖其他文件的情况下，创建一个默认图标，返回图标路径"""
     from PIL import Image, ImageDraw

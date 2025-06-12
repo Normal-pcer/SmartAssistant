@@ -21,16 +21,17 @@ class Assistant:
         """执行用户文字命令的相关信号"""
         receive_content = pyqtSignal(ChatContent)
         confirm_script = pyqtSignal(str)
-
         running_lock: bool = False
 
     config: Config  # 配置文件
-    selected_files: List[Path] = []  # 选中的文件
+    selected_files: List[Path]  # 选中的文件
 
-    command_signals = CommandSignals()
+    command_signals: CommandSignals
 
     def __init__(self) -> None:
         self.config = Config()
+        self.selected_files = []
+        self.command_signals = Assistant.CommandSignals()
 
     def process_files(self, script: str, files: List[str],
                       output: Callable[[str], None]) -> None:

@@ -26,7 +26,7 @@ class ControlButtons(QHBoxLayout):
         self.stop_button.clicked.connect(self.on_stop_button_clicked)
         self.run_button.setStyleSheet("background-color: #4CAF50; color: white;")
         self.stop_button.setStyleSheet("background-color: #F44336; color: white;")
-    
+
     def to_confirm_script_mode(self, script: str) -> None:
         """切换到确认脚本模式"""
         self.script_to_run = script
