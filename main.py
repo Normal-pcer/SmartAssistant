@@ -10,6 +10,7 @@ from sys import argv, exit
 from utils.windows import set_app_id
 from utils.general import log
 from utils.icon import create_default_icon, get_icon
+from ui.font import DefaultFont
 
 APP_NAME = "智能助手"
 APP_TITLE = "智能助手"
@@ -29,6 +30,8 @@ def main():
         set_app_id(APP_ID)
     except Exception as e:
         log.error(f"无法设置 Windows 应用 ID：{e}")
+
+    app.setFont(DefaultFont())
 
     # 创建主窗口
     window = MainWindow(Assistant())

@@ -1,43 +1,46 @@
 import os
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtGui import QDragEnterEvent, QDropEvent
+from typing import List, Optional
+from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtWidgets import  QListWidget
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QDragMoveEvent
 from utils.general import Path
 
 
-TIP_TEXT = "拖拽文件到此处"
-
-
-class FileDropArea(QLabel):
+class FileDropArea(QListWidget):
     """文件拖放区"""
-    add_file_signal = pyqtSignal(str) # 添加文件信号
+    add_file_signal = pyqtSignal(str)  # 添加文件信号
+    file_list: List[Path]
 
     def __init__(self) -> None:
-        super().__init__(TIP_TEXT)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet(self.get_stylesheet())
+        super().__init__()
         self.setAcceptDrops(True)
         self.setMinimumHeight(100)
+        self.setMaximumHeight(150)
+        self.file_list = []
 
-    @staticmethod
-    def get_stylesheet() -> str:
-        return """border: 2px dashed #aaa; border-radius: 10px; padding: 20px;
-            background-color: #f9f9f9; font-size: 16px;"""
+        self.addItem("拖拽文件到此处")
+        if item := self.item(0):
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def dragEnterEvent(self, a0: QDragEnterEvent | None) -> None:
+    def dragEnterEvent(self, e: Optional[QDragEnterEvent]) -> None:
         """处理拖拽进入事件"""
-        if a0 is None:
+        if e is None:
             return
-        event = a0
-
+        event = e
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
     
-    def dropEvent(self, a0: QDropEvent | None) -> None:
-        """处理拖拽事件"""
-        if a0 is None:
+    def dragMoveEvent(self, e: Optional[QDragMoveEvent]) -> None:
+        """处理拖拽移动事件"""
+        if e is None:
             return
-        event = a0
+        event = e
+        event.acceptProposedAction()
+
+    def dropEvent(self, event: Optional[QDropEvent]) -> None:
+        """处理拖拽事件"""
+        if event is None:
+            return
 
         data = event.mimeData()
         for url in data.urls():
@@ -45,8 +48,18 @@ class FileDropArea(QLabel):
             if os.path.isfile(file_path):
                 self.add_file(file_path)
         event.acceptProposedAction()
-    
+
     def add_file(self, file_path: Path) -> None:
         """添加文件"""
-        # 发出信号，等待处理
+        if file_path in self.file_list:
+            return
+        
+        if not self.file_list:
+            self.clear()
+
+        self.file_list.append(file_path)
+        self.addItem(file_path)
+
+        # 发出信号，等待其他处理
         self.add_file_signal.emit(file_path)
+

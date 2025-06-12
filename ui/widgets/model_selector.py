@@ -28,7 +28,6 @@ class ModelSelector(QHBoxLayout):
         self.addWidget(self.label)
         self.combo_box = QComboBox()
         self.combo_box.setMinimumWidth(200)
-        self.combo_box.setStyleSheet("QComboBox {padding: 4px;}")
         self.addWidget(self.combo_box)
 
         self.addStretch()
@@ -96,7 +95,13 @@ class ModelSelector(QHBoxLayout):
 
         layout.addLayout(button_layout)
         dialog.setLayout(layout)
+        dialog.setStyleSheet("""
+            QPushButton{
+                background-color: #4CAF50;
+                color: white;
+            }""")
         dialog.exec_()
+
 
     def delete_model_row(self, table: QTableWidget, index: int) -> None:
         """删除模型"""

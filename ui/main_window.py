@@ -11,10 +11,11 @@ from core.assistant import Assistant
 from utils.general import set_default, Path, log
 from utils.icon import get_icon
 from ui.widgets.file_drop_area import FileDropArea
-from ui.widgets.file_info import FileInfo
 from ui.widgets.output_area import OutputArea
 from ui.widgets.model_selector import ModelSelector
 from ui.widgets.control_buttons import ControlButtons
+# from ui.font import DefaultFont
+from ui.stylesheet import STYLESHEET
 
 WINDOW_TITLE = "智能助手"
 MIN_WINDOW_SIZE = (600, 500)
@@ -82,7 +83,6 @@ class MainWindow(QMainWindow):
 
     pin_button: QPushButton
     file_drop_area: FileDropArea
-    file_info: FileInfo
     model_selector: ModelSelector
     control_buttons: ControlButtons
     output_area: OutputArea
@@ -102,6 +102,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(*MIN_WINDOW_SIZE)
         self.setWindowIcon(QIcon(get_icon(ICON_NAME)))
 
+        # 设置样式
+        self.setStyleSheet(STYLESHEET)
+        # self.setFont(DefaultFont())
+
         # 创建初始布局
         self.main_widget = QWidget()
         self.main_layout = QVBoxLayout(self.main_widget)
@@ -114,7 +118,7 @@ class MainWindow(QMainWindow):
 
         # 置顶按钮
         self.pin_flag = True
-        self.pin_button = QPushButton("置顶")
+        self.pin_button = QPushButton(("置顶", "取消置顶")[self.pin_flag])
         self.pin_button.setCheckable(True)
         self.pin_button.setChecked(self.pin_flag)
         self.pin_button.clicked.connect(self.toggle_pin)
@@ -124,15 +128,10 @@ class MainWindow(QMainWindow):
         # 文件拖放区
         self.file_drop_area = FileDropArea()
         self.main_layout.addWidget(self.file_drop_area)
-
-        # 文件展示区
-        self.file_info = FileInfo()
-        self.main_layout.addWidget(self.file_info)
-
+        self.setAcceptDrops(True )
         def on_add_file(file_path: Path):  # 添加文件时进行相关处理
             log.debug(f"on_add_file: {file_path}")
             self.assistant.selected_files.append(file_path)
-            self.file_info.add_file(file_path)  # 刷新文件列表
         self.file_drop_area.add_file_signal.connect(on_add_file)
 
         # 命令输入区
@@ -212,6 +211,7 @@ class MainWindow(QMainWindow):
         self.pin_button.setText(text[self.pin_flag])
         self.pin_button.setChecked(self.pin_flag)
         self.after_pin()
+        self.show()
 
     def after_pin(self) -> None:
         """置顶或取消置顶后，重新设置窗口状态"""
